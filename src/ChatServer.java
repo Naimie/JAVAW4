@@ -9,38 +9,18 @@ import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 class ChatServer implements Runnable {
     private final static int PORT = 8000;
     private final static int MAX_CLIENTS = 5;
     private final static Executor executor = Executors.newFixedThreadPool(MAX_CLIENTS);
-    private static CopyOnWriteArrayList<ChatServer> clientConnections = new CopyOnWriteArrayList<>();
-    private static ConcurrentHashMap<ChatServer, ArrayList<String>> messages = new ConcurrentHashMap<>();
+    private static CopyOnWriteArrayList<PrintWriter> clientConnections = new CopyOnWriteArrayList<>();
+    private static BlockingQueue<String> messages = new ArrayBlockingQueue<>(100);
     private boolean isFirstMessage = true;
     private final Socket clientSocket;
     private String clientName = "";
 
-	/*private class ClientHolder{
-		private String name;
-		private Socket clientSocket;
-
-		public ClientHolder(String name, Socket clientSocket){
-			this.name = name;
-			this.clientSocket = clientSocket;
-		}
-
-		public String getName() {
-			return name;
-		}
-
-		public Socket getSocket() {
-			return clientSocket;
-		}
-	}*/
 
     private ChatServer(Socket clientSocket) {
         this.clientSocket = clientSocket;
@@ -58,7 +38,10 @@ class ChatServer implements Runnable {
             socketWriter = new PrintWriter(clientSocket.getOutputStream(), true);
             socketReader = new BufferedReader(
                     new InputStreamReader(clientSocket.getInputStream())
+
             );
+            MessageHandler messageHandler = new MessageHandler();
+            new Thread(messageHandler).start();
 
             String threadInfo = " (" + Thread.currentThread().getName() + ").";
             String inputLine = socketReader.readLine();
@@ -67,7 +50,9 @@ class ChatServer implements Runnable {
 
             // First message is client name.
             clientName = inputLine;
-            clientConnections.add(this);
+            clientConnections.add(socketWriter);
+            String msg = "";
+
 
             while (inputLine != null) {
                 if (isFirstMessage) {
@@ -76,20 +61,17 @@ class ChatServer implements Runnable {
                             + clientName + " " + remoteSocketAddress + threadInfo);
                     isFirstMessage = false;
                 } else {
-                    for (List<String> list : messages.values()) {
-                        list.add(clientName + ": " + inputLine);
-                    }
-                    for (String s : messages.get(this)) {
-                        socketWriter.println(s);
-                    }
-                    messages.get(this).clear();
-
-                        //messages.add(clientName + ": " + inputLine);
-
-                    /*socketWriter.println(inputLine);
-                    System.out.println("Sent: \"" + inputLine + "\" to "
-                            + clientName + " " + remoteSocketAddress + threadInfo);
+                    msg = clientName + ": " + inputLine;
+                    messages.put(msg);
                     inputLine = socketReader.readLine();
+                    //messages.get(this).clear();
+
+                    //messages.add(clientName + ": " + inputLine);
+
+                    //socketWriter.println(msg);
+                    /*System.out.println("Sent: \"" + inputLine + "\" to "
+                            + clientName + " " + remoteSocketAddress + threadInfo);
+
                     System.out.println("Received: \"" + inputLine + "\" from "
                             + clientName + " " + remoteSocketAddress + threadInfo);*/
                 }
@@ -109,6 +91,25 @@ class ChatServer implements Runnable {
                     clientSocket.close();
             } catch (Exception exception) {
                 System.out.println(exception);
+            }
+        }
+    }
+
+    private class MessageHandler implements Runnable {
+
+        @Override
+        public void run() {
+            String msg = "";
+
+            while (true) {
+                try {
+                    msg = messages.take();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                for(PrintWriter p : clientConnections){
+                    p.println(msg);
+                }
             }
         }
     }
