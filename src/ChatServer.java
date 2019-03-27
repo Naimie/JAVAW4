@@ -1,4 +1,4 @@
-// Peter Idestam-Almquist, 2017-03-10.
+// Kristina Elmgren
 // Server, multi-threaded, accepting several simultaneous clients.
 
 import java.net.Socket;
@@ -7,8 +7,6 @@ import java.net.SocketAddress;
 import java.io.PrintWriter;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.*;
 
 class ChatServer implements Runnable {
@@ -20,6 +18,7 @@ class ChatServer implements Runnable {
     private boolean isFirstMessage = true;
     private final Socket clientSocket;
     private String clientName = "";
+    private ClientMessageHandler messageHandler;
 
 
     private ChatServer(Socket clientSocket) {
@@ -40,8 +39,9 @@ class ChatServer implements Runnable {
                     new InputStreamReader(clientSocket.getInputStream())
 
             );
-            MessageHandler messageHandler = new MessageHandler();
-            new Thread(messageHandler).start();
+            messageHandler = new ClientMessageHandler();
+            Thread clientMsgHandler = new Thread(messageHandler);
+                   clientMsgHandler .start();
 
             String threadInfo = " (" + Thread.currentThread().getName() + ").";
             String inputLine = socketReader.readLine();
@@ -77,6 +77,7 @@ class ChatServer implements Runnable {
                 }
 
             }
+
             System.out.println("Closing connection " + remoteSocketAddress
                     + " (" + localSocketAddress + ").");
         } catch (Exception exception) {
@@ -92,16 +93,20 @@ class ChatServer implements Runnable {
             } catch (Exception exception) {
                 System.out.println(exception);
             }
+            clientConnections.remove(socketWriter);
+            messageHandler.stop();
+
         }
     }
 
-    private class MessageHandler implements Runnable {
-
+    private class ClientMessageHandler implements Runnable {
+        boolean shouldRun = true;
         @Override
         public void run() {
+
             String msg = "";
 
-            while (true) {
+            while (shouldRun) {
                 try {
                     msg = messages.take();
                 } catch (InterruptedException e) {
@@ -110,7 +115,17 @@ class ChatServer implements Runnable {
                 for(PrintWriter p : clientConnections){
                     p.println(msg);
                 }
+                try{
+                    Thread.sleep(100);
+                }catch (InterruptedException e){
+                    e.printStackTrace();
+                }
+
             }
+        }
+        public void stop(){
+            shouldRun = false;
+
         }
     }
 
@@ -125,6 +140,7 @@ class ChatServer implements Runnable {
             System.out.println("Listening (" + serverSocketAddress + ").");
 
             while (true) {
+
                 clientSocket = serverSocket.accept();
                 executor.execute(new ChatServer(clientSocket));
             }
