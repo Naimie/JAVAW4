@@ -1,5 +1,5 @@
 // Kristina Elmgren
-// Server, multi-threaded, accepting several simultaneous clients.
+
 
 import java.net.Socket;
 import java.net.ServerSocket;
